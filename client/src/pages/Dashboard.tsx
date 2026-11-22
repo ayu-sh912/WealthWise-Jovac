@@ -3,8 +3,7 @@ import { AlertCircle, Loader2, Target as TargetIcon } from 'lucide-react';
 import StatCard from '@/components/StatCard';
 import MonthChart from '@/components/MonthChart';
 import CategoryBars from '@/components/CategoryBars';
-import { fetchSummary, type ReportSummary } from '@/lib/reports';
-import { fetchTransactions, fetchGoals } from '@/lib/reports';
+import { fetchGoals, fetchSummary, fetchTransactions, type ReportSummary } from '@/lib/reports';
 import { inr } from '@/lib/supabase';
 
 export default function Dashboard() {
@@ -13,20 +12,25 @@ export default function Dashboard() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
+    let cancelled = false;
+
+    const loadDashboard = async () => {
       try {
         const [txns, goals] = await Promise.all([fetchTransactions(), fetchGoals()]);
-        const s = await fetchSummary(txns, goals);
-        if (mounted) setSummary(s);
+        const nextSummary = await fetchSummary(txns, goals);
+        if (!cancelled) setSummary(nextSummary);
       } catch (err) {
-        if (mounted) setError(err instanceof Error ? err.message : 'Failed to load report');
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load report');
+        }
       } finally {
-        if (mounted) setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    })();
+    };
+
+    void loadDashboard();
     return () => {
-      mounted = false;
+      cancelled = true;
     };
   }, []);
 
@@ -40,7 +44,7 @@ export default function Dashboard() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-32 text-center">
+      <div role="alert" className="flex flex-col items-center justify-center py-32 text-center">
         <AlertCircle className="mb-3 h-10 w-10 text-red-400" />
         <p className="text-sm font-medium text-slate-600">{error}</p>
       </div>
@@ -49,7 +53,8 @@ export default function Dashboard() {
 
   if (!summary) return null;
 
-  const goalPct = summary.goalsTarget > 0 ? Math.min(100, (summary.goalsSaved / summary.goalsTarget) * 100) : 0;
+  const goalPct =
+    summary.goalsTarget > 0 ? Math.min(100, (summary.goalsSaved / summary.goalsTarget) * 100) : 0;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
@@ -58,7 +63,6 @@ export default function Dashboard() {
         <p className="mt-1 text-sm text-slate-500">Your full money picture at a glance.</p>
       </div>
 
-      {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Balance"
@@ -77,13 +81,11 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Charts */}
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <MonthChart data={summary.monthly} />
         <CategoryBars data={summary.byCategory} />
       </div>
 
-      {/* Goals summary strip */}
       {summary.goalsTarget > 0 && (
         <div className="mt-6 flex items-center gap-4 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
